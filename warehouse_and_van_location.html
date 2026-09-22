@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="de" wm-editor-extension-available="true"><head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Warehouse and Van Location</title>
+<style>
+:root {
+  --bg: #f6f5f2;
+  --panel: #ffffff;
+  --ink: #1f2937;
+  --muted: #6b7280;
+  --accent: #b3623b;
+  --accent-soft: #f0e3da;
+  --land: #e4e0d8;
+  --land-stroke: #a89f8f;
+  --marker: #b3623b;
+  --marker-hover: #8c4a2a;
+  --border: #e5e0d5;
+  font-family: 'Georgia', 'Times New Roman', serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1a17;
+    --panel: #262320;
+    --ink: #eee9e1;
+    --muted: #a79e91;
+    --accent: #d68a5e;
+    --accent-soft: #3a2c22;
+    --land: #33302a;
+    --land-stroke: #5a5346;
+    --marker: #d68a5e;
+    --marker-hover: #f0a878;
+    --border: #3a362f;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1a17;
+  --panel: #262320;
+  --ink: #eee9e1;
+  --muted: #a79e91;
+  --accent: #d68a5e;
+  --accent-soft: #3a2c22;
+  --land: #33302a;
+  --land-stroke: #5a5346;
+  --marker: #d68a5e;
+  --marker-hover: #f0a878;
+  --border: #3a362f;
+}
+* { box-sizing: border-box; }
+html, body {
+  margin: 0; padding: 0; height: 100%;
+  background: var(--bg); color: var(--ink);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+body {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  display: flex; flex-direction: column; min-height: 100%;
+}
+header {
+  padding: 18px 20px 10px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+header h1 {
+  margin: 0 0 4px;
+  font-family: Georgia, serif;
+  font-size: 1.3rem;
+  font-weight: 600;
+}
+header p { margin: 0; color: var(--muted); font-size: 0.85rem; }
+#search {
+  margin-top: 10px; width: 100%; max-width: 420px;
+  padding: 9px 12px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink); font-size: 0.9rem;
+}
+#search:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+main {
+  flex: 1; display: flex; min-height: 0;
+}
+#map-wrap {
+  flex: 1.3; position: relative; overflow: hidden; background: var(--bg);
+  min-width: 0;
+  touch-action: none;
+}
+#map-svg { width: 100%; height: 100%; display: block; cursor: grab; }
+#map-svg.grabbing { cursor: grabbing; }
+.land { fill: var(--land); stroke: var(--land-stroke); stroke-width: 1.2; }
+.marker circle {
+  fill: var(--marker); stroke: var(--panel); stroke-width: 1.3;
+  cursor: pointer; transition: r 0.12s ease, fill 0.12s ease;
+}
+.marker:hover circle, .marker.active circle { fill: var(--marker-hover); }
+.marker text {
+  font-size: 7px; fill: var(--ink); font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  paint-order: stroke; stroke: var(--panel); stroke-width: 2.2px; stroke-linejoin: round;
+  pointer-events: none; user-select: none;
+}
+.marker.active text, .marker:hover text { font-weight: 700; }
+#sidebar {
+  flex: 1; max-width: 380px; min-width: 260px;
+  border-left: 1px solid var(--border); background: var(--panel);
+  overflow-y: auto; padding: 0;
+}
+#list { list-style: none; margin: 0; padding: 6px; }
+#list li {
+  padding: 10px 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid transparent; margin-bottom: 2px;
+}
+#list li:hover { background: var(--accent-soft); }
+#list li.active { background: var(--accent-soft); border-color: var(--accent); }
+#list li .lname { font-weight: 600; font-size: 0.88rem; }
+#list li .lort { color: var(--muted); font-size: 0.78rem; }
+#detail {
+  border-bottom: 1px solid var(--border);
+  padding: 16px 18px; font-size: 0.88rem; display: none;
+  position: sticky; top: 0; z-index: 5; background: var(--panel);
+  max-height: 60vh; overflow-y: auto;
+}
+#detail.show { display: block; }
+#detail h2 { margin: 0 0 6px; font-size: 1.05rem; }
+#detail .row { margin: 6px 0; }
+#detail .label { color: var(--muted); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+#detail .vans { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+#detail .van {
+  background: var(--accent-soft); color: var(--accent); border-radius: 6px;
+  padding: 3px 8px; font-size: 0.78rem; font-weight: 600;
+}
+#detail input, #detail textarea {
+  width: 100%; padding: 7px 9px; border-radius: 6px; border: 1px solid var(--border);
+  background: var(--bg); color: var(--ink); font-size: 0.85rem; font-family: inherit;
+  margin-top: 2px; resize: vertical;
+}
+#detail input:focus, #detail textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+.edit-btn {
+  padding: 8px 14px; border-radius: 8px; border: none; background: var(--accent);
+  color: #fff; font-size: 0.85rem; font-weight: 600; cursor: pointer;
+}
+.edit-btn.secondary { background: var(--bg); color: var(--ink); border: 1px solid var(--border); }
+.edit-btn:hover { opacity: 0.9; }
+#controls {
+  position: absolute; bottom: 14px; right: 14px; display: flex; flex-direction: column; gap: 6px;
+}
+#controls button {
+  width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--ink); font-size: 1.1rem; cursor: pointer;
+}
+#count-badge {
+  position: absolute; top: 12px; left: 12px; background: var(--panel);
+  border: 1px solid var(--border); border-radius: 20px; padding: 5px 12px;
+  font-size: 0.78rem; color: var(--muted);
+}
+@media (max-width: 760px) {
+  main { flex-direction: column; }
+  #map-wrap { flex: 1 1 55%; }
+  #sidebar { max-width: none; border-left: none; border-top: 1px solid var(--border); flex: 1 1 45%; }
+}
+::-webkit-scrollbar { width: 8px; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Warehouse and Van Location</h1>
+  <p>45 Standorte in Deutschland · klicke auf einen Punkt oder Eintrag für Details</p>
+  <input id="search" type="text" placeholder="Suche nach Ort, Adresse oder Stockkeeper...">
+</header>
+<main>
+  <div id="map-wrap">
+    <div id="count-badge">45 Standorte</div>
+    <svg id="map-svg" viewBox="342.44585861103485 -7.956659106195605 328.6077958133991 438.14372775119875" preserveAspectRatio="xMidYMid meet" class="">
+      <g id="pan-group">
+        <path class="land" d="M 237.7,39.5 L 273.3,30.0 L 320.8,67.9 L 350.4,77.4 L 380.1,115.2 L 451.3,58.4 L 528.5,124.7 L 546.3,209.9 L 546.3,247.8 L 564.1,304.6 L 570.0,352.0 L 552.2,399.3 L 546.3,408.8 L 421.6,465.6 L 397.9,475.1 L 427.6,503.5 L 498.8,560.3 L 475.1,607.7 L 451.3,655.0 L 445.4,711.9 L 332.6,730.8 L 285.2,721.3 L 249.6,730.8 L 225.8,716.6 L 190.2,711.9 L 130.9,683.4 L 142.7,636.1 L 166.5,588.7 L 95.3,569.8 L 59.7,541.4 L 41.9,513.0 L 35.9,475.1 L 35.9,418.3 L 30.0,399.3 L 41.9,361.5 L 35.9,323.6 L 95.3,285.7 L 95.3,257.3 L 107.1,209.9 L 107.1,181.5 L 160.5,162.6 L 190.2,143.6 L 208.0,124.7 L 214.0,115.2 L 208.0,77.4 L 237.7,39.5 Z"></path>
+        <g id="markers"><g class="marker" data-idx="0"><circle cx="444.9" cy="374.5" r="12" fill="transparent"></circle><circle cx="444.9" cy="374.5" r="4"></circle><text x="451.9" y="377.1">Mutzschen AWH (DBSchenker)</text></g><g class="marker" data-idx="1"><circle cx="121.5" cy="274.7" r="12" fill="transparent"></circle><circle cx="121.5" cy="274.7" r="4"></circle><text x="128.5" y="277.3">Rheine Office</text></g><g class="marker" data-idx="2"><circle cx="121.5" cy="274.7" r="12" fill="transparent"></circle><circle cx="121.5" cy="274.7" r="4"></circle><text x="128.5" y="277.3">Rheine</text></g><g class="marker" data-idx="3"><circle cx="227.8" cy="102.4" r="12" fill="transparent"></circle><circle cx="227.8" cy="102.4" r="4"></circle><text x="234.8" y="105">Tensbüttel-Röst</text></g><g class="marker active" data-idx="4"><circle cx="218.5" cy="68.5" r="12" fill="transparent"></circle><circle cx="218.5" cy="68.5" r="4"></circle><text x="225.5" y="71.1">Husum</text></g><g class="marker" data-idx="5"><circle cx="216.2" cy="204.6" r="12" fill="transparent"></circle><circle cx="216.2" cy="204.6" r="4"></circle><text x="223.2" y="207.2">Oyten</text></g><g class="marker" data-idx="6"><circle cx="197.1" cy="346" r="12" fill="transparent"></circle><circle cx="197.1" cy="346" r="4"></circle><text x="204.1" y="348.6">Bad Wuennenberg</text></g><g class="marker" data-idx="7"><circle cx="293" cy="285.9" r="12" fill="transparent"></circle><circle cx="293" cy="285.9" r="4"></circle><text x="300" y="288.5">Lengede-Broistedt</text></g><g class="marker" data-idx="8"><circle cx="132.6" cy="335.1" r="12" fill="transparent"></circle><circle cx="132.6" cy="335.1" r="4"></circle><text x="139.6" y="337.70000000000005">Werne</text></g><g class="marker" data-idx="9"><circle cx="271" cy="269.2" r="12" fill="transparent"></circle><circle cx="271" cy="269.2" r="4"></circle><text x="278" y="271.8">Lehrte</text></g><g class="marker" data-idx="10"><circle cx="48.4" cy="388.3" r="12" fill="transparent"></circle><circle cx="48.4" cy="388.3" r="4"></circle><text x="55.4" y="390.90000000000003">Wegberg</text></g><g class="marker" data-idx="11"><circle cx="164.9" cy="178.2" r="12" fill="transparent"></circle><circle cx="164.9" cy="178.2" r="4"></circle><text x="171.9" y="180.79999999999998">Jade</text></g><g class="marker" data-idx="12"><circle cx="141.1" cy="189.4" r="12" fill="transparent"></circle><circle cx="141.1" cy="189.4" r="4"></circle><text x="148.1" y="192">Apen</text></g><g class="marker" data-idx="13"><circle cx="495.7" cy="257.4" r="12" fill="transparent"></circle><circle cx="495.7" cy="257.4" r="4"></circle><text x="502.7" y="260">Vogelsdorf Büro</text></g><g class="marker" data-idx="14"><circle cx="369.3" cy="286.4" r="12" fill="transparent"></circle><circle cx="369.3" cy="286.4" r="4"></circle><text x="376.3" y="289">Barleben</text></g><g class="marker" data-idx="15"><circle cx="501.1" cy="180.8" r="12" fill="transparent"></circle><circle cx="501.1" cy="180.8" r="5.5"></circle><text x="508.1" y="183.4">Prenzlau</text></g><g class="marker" data-idx="16"><circle cx="468.6" cy="155.3" r="12" fill="transparent"></circle><circle cx="468.6" cy="155.3" r="4"></circle><text x="475.6" y="157.9">Neubrandenburg</text></g><g class="marker" data-idx="17"><circle cx="495.7" cy="257.4" r="12" fill="transparent"></circle><circle cx="495.7" cy="257.4" r="5.5"></circle><text x="502.7" y="260">Vorgelsdorf</text></g><g class="marker" data-idx="18"><circle cx="518" cy="237.4" r="12" fill="transparent"></circle><circle cx="518" cy="237.4" r="4"></circle><text x="525" y="240">Wriezen</text></g><g class="marker" data-idx="19"><circle cx="535.5" cy="280.5" r="12" fill="transparent"></circle><circle cx="535.5" cy="280.5" r="5.5"></circle><text x="542.5" y="283.1">Müllrose</text></g><g class="marker" data-idx="20"><circle cx="401.1" cy="196.8" r="12" fill="transparent"></circle><circle cx="401.1" cy="196.8" r="4"></circle><text x="408.1" y="199.4">Pritzwalk</text></g><g class="marker" data-idx="21"><circle cx="376.7" cy="256" r="12" fill="transparent"></circle><circle cx="376.7" cy="256" r="4"></circle><text x="383.7" y="258.6">Lüderitz</text></g><g class="marker" data-idx="22"><circle cx="473.9" cy="108.4" r="12" fill="transparent"></circle><circle cx="473.9" cy="108.4" r="4"></circle><text x="480.9" y="111">Greifswald</text></g><g class="marker" data-idx="23"><circle cx="488.6" cy="138.4" r="12" fill="transparent"></circle><circle cx="488.6" cy="138.4" r="4"></circle><text x="495.6" y="141">Sarnow</text></g><g class="marker" data-idx="24"><circle cx="381.1" cy="169.7" r="12" fill="transparent"></circle><circle cx="381.1" cy="169.7" r="4"></circle><text x="388.1" y="172.29999999999998">Parchim</text></g><g class="marker" data-idx="25"><circle cx="399.8" cy="111.9" r="12" fill="transparent"></circle><circle cx="399.8" cy="111.9" r="4"></circle><text x="406.8" y="114.5">Papendorf</text></g><g class="marker" data-idx="26"><circle cx="344.8" cy="128.8" r="12" fill="transparent"></circle><circle cx="344.8" cy="128.8" r="4"></circle><text x="351.8" y="131.4">Grevesmühlen</text></g><g class="marker" data-idx="27"><circle cx="477.6" cy="342.5" r="12" fill="transparent"></circle><circle cx="477.6" cy="342.5" r="4"></circle><text x="484.6" y="345.1">Tröbitz Office</text></g><g class="marker" data-idx="28"><circle cx="427.4" cy="268.9" r="12" fill="transparent"></circle><circle cx="427.4" cy="268.9" r="4"></circle><text x="434.4" y="271.5">Brandenburg</text></g><g class="marker" data-idx="29"><circle cx="492.5" cy="358.3" r="12" fill="transparent"></circle><circle cx="492.5" cy="358.3" r="4"></circle><text x="499.5" y="360.90000000000003">Schraden</text></g><g class="marker" data-idx="30"><circle cx="368.1" cy="323.5" r="12" fill="transparent"></circle><circle cx="368.1" cy="323.5" r="4"></circle><text x="375.1" y="326.1">Güsten</text></g><g class="marker" data-idx="31"><circle cx="525.8" cy="329.5" r="12" fill="transparent"></circle><circle cx="525.8" cy="329.5" r="4"></circle><text x="532.8" y="332.1">Kolkwitz</text></g><g class="marker" data-idx="32"><circle cx="477.6" cy="342.5" r="12" fill="transparent"></circle><circle cx="477.6" cy="342.5" r="4"></circle><text x="484.6" y="345.1">Tröbitz</text></g><g class="marker" data-idx="33"><circle cx="312.7" cy="389.4" r="12" fill="transparent"></circle><circle cx="312.7" cy="389.4" r="4"></circle><text x="319.7" y="392">Bad Langensalza</text></g><g class="marker" data-idx="34"><circle cx="339.5" cy="383.2" r="12" fill="transparent"></circle><circle cx="339.5" cy="383.2" r="4"></circle><text x="346.5" y="385.8">Sömmerda</text></g><g class="marker" data-idx="35"><circle cx="392.7" cy="354.1" r="12" fill="transparent"></circle><circle cx="392.7" cy="354.1" r="4"></circle><text x="399.7" y="356.70000000000005">Halle</text></g><g class="marker" data-idx="36"><circle cx="264.2" cy="513.6" r="12" fill="transparent"></circle><circle cx="264.2" cy="513.6" r="4"></circle><text x="271.2" y="516.2">Waldbüttelbrunn Office</text></g><g class="marker" data-idx="37"><circle cx="326.5" cy="551.7" r="12" fill="transparent"></circle><circle cx="326.5" cy="551.7" r="4"></circle><text x="333.5" y="554.3000000000001">Roßtal</text></g><g class="marker" data-idx="38"><circle cx="95.4" cy="517.6" r="12" fill="transparent"></circle><circle cx="95.4" cy="517.6" r="4"></circle><text x="102.4" y="520.2">Thalfang</text></g><g class="marker" data-idx="39"><circle cx="264.2" cy="513.6" r="12" fill="transparent"></circle><circle cx="264.2" cy="513.6" r="4"></circle><text x="271.2" y="516.2">Waldbüttelbrünn</text></g><g class="marker" data-idx="40"><circle cx="248.1" cy="372.5" r="12" fill="transparent"></circle><circle cx="248.1" cy="372.5" r="4"></circle><text x="255.1" y="375.1">Kaufungen</text></g><g class="marker" data-idx="41"><circle cx="159.3" cy="523.4" r="12" fill="transparent"></circle><circle cx="159.3" cy="523.4" r="4"></circle><text x="166.3" y="526">Ilbesheim</text></g><g class="marker" data-idx="42"><circle cx="197.2" cy="645.9" r="12" fill="transparent"></circle><circle cx="197.2" cy="645.9" r="5.5"></circle><text x="204.2" y="648.5">Empfingen</text></g><g class="marker" data-idx="43"><circle cx="169.9" cy="400.3" r="12" fill="transparent"></circle><circle cx="169.9" cy="400.3" r="4"></circle><text x="176.9" y="402.90000000000003">Erndtebrück</text></g><g class="marker" data-idx="44"><circle cx="248" cy="454.2" r="12" fill="transparent"></circle><circle cx="248" cy="454.2" r="4"></circle><text x="255" y="456.8">Flieden</text></g></g>
+      </g>
+    </svg>
+    <div id="controls">
+      <button id="zoom-in" title="Vergrößern">+</button>
+      <button id="zoom-out" title="Verkleinern">−</button>
+      <button id="zoom-reset" title="Zurücksetzen">↺</button>
+    </div>
+  </div>
+  <div id="sidebar">
+    <div id="detail" class="show">
+      <h2>SC Husum</h2>
+      <div class="row"><div class="label">Adresse</div>Otto-Hahn-Straße 2,, 25813 Husum</div>
+      <div class="row"><div class="label">Plant &amp; Sloc</div>20401060</div>
+      <div class="row"><div class="label">Stockkeeper</div>JUKAL, RMJ</div>
+      <div class="row"><div class="label">Vans (0)</div>
+        <div class="vans"><span style="color:var(--muted)">keine hinterlegt</span></div>
+      </div>
+      <button id="edit-btn" class="edit-btn">Bearbeiten</button>
+    </div>
+    <ul id="list"><li data-idx="0"><div class="lname">Mutzschen AWH (DBSchenker)</div><div class="lort">D-04668</div></li><li data-idx="1"><div class="lname">Rheine Office</div><div class="lort">48432</div></li><li data-idx="2"><div class="lname">Vestas SPR DE Rheine</div><div class="lort">Rheine</div></li><li data-idx="3"><div class="lname">SC Tensbüttel</div><div class="lort">Tensbüttel-Röst</div></li><li data-idx="4" class="active"><div class="lname">SC Husum</div><div class="lort">Husum</div></li><li data-idx="5"><div class="lname">SC Oyten</div><div class="lort">Oyten</div></li><li data-idx="6"><div class="lname">SC B Wuennenberg</div><div class="lort">Bad Wuennenberg</div></li><li data-idx="7"><div class="lname">Broistedt</div><div class="lort">Lengede-Broistedt</div></li><li data-idx="8"><div class="lname">Werne</div><div class="lort">Werne</div></li><li data-idx="9"><div class="lname">Lehrte</div><div class="lort">Lehrte</div></li><li data-idx="10"><div class="lname">Wegberg</div><div class="lort">Wegberg</div></li><li data-idx="11"><div class="lname">Jaderberg</div><div class="lort">Jade</div></li><li data-idx="12"><div class="lname">Apen</div><div class="lort">Apen</div></li><li data-idx="13"><div class="lname">Vogelsdorf Büro</div><div class="lort">-</div></li><li data-idx="14"><div class="lname">SC Barleben</div><div class="lort">Barleben</div></li><li data-idx="15"><div class="lname">SC Prenzlau</div><div class="lort">Prenzlau · 10 Van(s)</div></li><li data-idx="16"><div class="lname">Aussenlager Neubrandenburg</div><div class="lort">Neubrandenburg</div></li><li data-idx="17"><div class="lname">SC Vogelsdorf</div><div class="lort">Vorgelsdorf · 7 Van(s)</div></li><li data-idx="18"><div class="lname">Aussenlager Wriezen</div><div class="lort">Wriezen</div></li><li data-idx="19"><div class="lname">Aussenlager Müllrose</div><div class="lort">Müllrose · 4 Van(s)</div></li><li data-idx="20"><div class="lname">SC Pritzwalk</div><div class="lort">Pritzwalk</div></li><li data-idx="21"><div class="lname">SC Lüderitz</div><div class="lort">Lüderitz</div></li><li data-idx="22"><div class="lname">SC Greifswald</div><div class="lort">Greifswald</div></li><li data-idx="23"><div class="lname">Aussenlager Sarnow</div><div class="lort">Sarnow</div></li><li data-idx="24"><div class="lname">Lager Parchim</div><div class="lort">Parchim</div></li><li data-idx="25"><div class="lname">Aussenlager Papendorf</div><div class="lort">Papendorf</div></li><li data-idx="26"><div class="lname">Aussenlager Grevesmühlen</div><div class="lort">Grevesmühlen</div></li><li data-idx="27"><div class="lname">Tröbitz Office</div><div class="lort">3253</div></li><li data-idx="28"><div class="lname">Schmerzke</div><div class="lort">Brandenburg</div></li><li data-idx="29"><div class="lname">SC Schraden</div><div class="lort">Schraden</div></li><li data-idx="30"><div class="lname">SC Güsten</div><div class="lort">Güsten</div></li><li data-idx="31"><div class="lname">SC Kolkwitz</div><div class="lort">Kolkwitz</div></li><li data-idx="32"><div class="lname">SC Tröbitz</div><div class="lort">Tröbitz</div></li><li data-idx="33"><div class="lname">Bad Langensalza</div><div class="lort">Bad Langensalza</div></li><li data-idx="34"><div class="lname">Sömmerda</div><div class="lort">Sömmerda</div></li><li data-idx="35"><div class="lname">Halle</div><div class="lort">Halle</div></li><li data-idx="36"><div class="lname">Waldbüttelbrunn Office</div><div class="lort">97297</div></li><li data-idx="37"><div class="lname">SC Roßtal</div><div class="lort">Roßtal</div></li><li data-idx="38"><div class="lname">SC Thalfang</div><div class="lort">Thalfang</div></li><li data-idx="39"><div class="lname">Waldbüttelbrunn</div><div class="lort">Waldbüttelbrünn</div></li><li data-idx="40"><div class="lname">Kaufungen</div><div class="lort">Kaufungen</div></li><li data-idx="41"><div class="lname">Ilbesheim</div><div class="lort">Ilbesheim</div></li><li data-idx="42"><div class="lname">Empfingen</div><div class="lort">Empfingen · 9 Van(s)</div></li><li data-idx="43"><div class="lname">Erndtebrück</div><div class="lort">Erndtebrück</div></li><li data-idx="44"><div class="lname">SC Flieden</div><div class="lort">Flieden</div></li></ul>
+  </div>
+</main>
+<script id="app-data" type="application/json">{"path":"M 237.7,39.5 L 273.3,30.0 L 320.8,67.9 L 350.4,77.4 L 380.1,115.2 L 451.3,58.4 L 528.5,124.7 L 546.3,209.9 L 546.3,247.8 L 564.1,304.6 L 570.0,352.0 L 552.2,399.3 L 546.3,408.8 L 421.6,465.6 L 397.9,475.1 L 427.6,503.5 L 498.8,560.3 L 475.1,607.7 L 451.3,655.0 L 445.4,711.9 L 332.6,730.8 L 285.2,721.3 L 249.6,730.8 L 225.8,716.6 L 190.2,711.9 L 130.9,683.4 L 142.7,636.1 L 166.5,588.7 L 95.3,569.8 L 59.7,541.4 L 41.9,513.0 L 35.9,475.1 L 35.9,418.3 L 30.0,399.3 L 41.9,361.5 L 35.9,323.6 L 95.3,285.7 L 95.3,257.3 L 107.1,209.9 L 107.1,181.5 L 160.5,162.6 L 190.2,143.6 L 208.0,124.7 L 214.0,115.2 L 208.0,77.4 L 237.7,39.5 Z","locations":[{"plant":"20501000","name":"Mutzschen AWH (DBSchenker)","address":"Zum Sorchennest 5 - Mutzschen/Grimma","zip":"D-04668","ort":"","stockkeeper":"UWSHA + AXAPE","vans":[],"lat":51.2619514,"lon":12.8917704,"x":444.9,"y":374.5},{"plant":"-","name":"Rheine Office","address":"Daimlerstrasse 40, 48432,Rheine","zip":"48432","ort":"","stockkeeper":"PAKDI*","vans":[],"lat":52.316491,"lon":7.4413299,"x":121.5,"y":274.7},{"plant":"20561000","name":"Vestas SPR DE Rheine","address":"Daimlerstrasse 40","zip":"48432","ort":"Rheine","stockkeeper":"KLRIE+TISHP+TBAFR+JUREE","vans":[],"lat":52.316491,"lon":7.4413299,"x":121.5,"y":274.7},{"plant":"20401160","name":"SC Tensbüttel","address":"Nordhastedter Straße 12","zip":"25767","ort":"Tensbüttel-Röst","stockkeeper":"JAKLZ,SANGO","vans":[],"lat":54.1353759,"lon":9.2332417,"x":227.8,"y":102.4},{"plant":"20401060","name":"SC Husum","address":"Otto-Hahn-Straße 2,","zip":"25813","ort":"Husum","stockkeeper":"JUKAL, RMJ","vans":[],"lat":54.49364822,"lon":9.077194241,"x":218.5,"y":68.5},{"plant":"20401180","name":"SC Oyten","address":"Industriestraße 77,","zip":"28876","ort":"Oyten","stockkeeper":"JNDAR,GAHEI","vans":[],"lat":53.0560849,"lon":9.037821,"x":216.2,"y":204.6},{"plant":"20401010","name":"SC B Wuennenberg","address":"Graf-Zeppelin-Str 68,","zip":"33181","ort":"Bad Wuennenberg","stockkeeper":"ALARF","vans":[],"lat":51.5636055,"lon":8.7154105,"x":197.1,"y":346},{"plant":"20406068","name":"Broistedt","address":"Ellen-Richards-Straße 1,","zip":"38268","ort":"Lengede-Broistedt","stockkeeper":"DEEBU,HAENN","vans":[],"lat":52.19828,"lon":10.332,"x":293,"y":285.9},{"plant":"20406981","name":"Werne","address":"Eichenbusch 14,","zip":"59368","ort":"Werne","stockkeeper":"CRNSE,MSCUL","vans":[],"lat":51.67881,"lon":7.62953,"x":132.6,"y":335.1},{"plant":"20406067","name":"Lehrte","address":"Köthenwaldstr. 64c","zip":"31275","ort":"Lehrte","stockkeeper":"DAIWO, SAMGH","vans":[],"lat":52.37446,"lon":9.96206,"x":271,"y":269.2},{"plant":"20406114","name":"Wegberg","address":"Friedrich List Allee 57a,","zip":"41844","ort":"Wegberg","stockkeeper":"PAPTG","vans":[],"lat":51.11657,"lon":6.20973,"x":48.4,"y":388.3},{"plant":"20406072","name":"Jaderberg","address":"Am Esch 17","zip":"26349","ort":"Jade","stockkeeper":"AEXBR","vans":[],"lat":53.334623,"lon":8.172538,"x":164.9,"y":178.2},{"plant":"20406056","name":"Apen","address":"Marktstraße 5","zip":"26689","ort":"Apen","stockkeeper":"AEXBR","vans":[],"lat":53.21715,"lon":7.771815,"x":141.1,"y":189.4},{"plant":"-","name":"Vogelsdorf Büro","address":"Frankfurter Chaussee 56, 15370 Fredersdorf-Vogelsdorf","zip":"-","ort":"","stockkeeper":"BJMKU*","vans":[],"lat":52.4985634,"lon":13.7474024,"x":495.7,"y":257.4},{"plant":"20401200","name":"SC Barleben","address":"Lindenallee,39179","zip":"39179","ort":"Barleben","stockkeeper":"SVBRN","vans":[],"lat":52.1923688,"lon":11.6170573,"x":369.3,"y":286.4},{"plant":"20401120","name":"SC Prenzlau","address":"Freyschmidtstr. 18","zip":"17291","ort":"Prenzlau","stockkeeper":"HSTU/ SYOWI","vans":["110","274","289","310","373","476","612","646","676","920"],"lat":53.3073675,"lon":13.8393754,"x":501.1,"y":180.8},{"plant":"20401120","name":"Aussenlager Neubrandenburg","address":"Sadelkowerstrasse 13","zip":"17034","ort":"Neubrandenburg","stockkeeper":"HSTU/ SYOWI","vans":[],"lat":53.57734355,"lon":13.29202982,"x":468.6,"y":155.3},{"plant":"20401140","name":"SC Vogelsdorf","address":"Frankfurter Chaussee 56","zip":"15370","ort":"Vorgelsdorf","stockkeeper":"PASHT /ANRIH","vans":["169","185","478","684","748","750","907"],"lat":52.4985634,"lon":13.7474024,"x":495.7,"y":257.4},{"plant":"20406021","name":"Aussenlager Wriezen","address":"Schulzendorfer Straße 17","zip":"16269","ort":"Wriezen","stockkeeper":"PASHT /ANRIH","vans":[],"lat":52.70974587,"lon":14.12429784,"x":518,"y":237.4},{"plant":"20406022","name":"Aussenlager Müllrose","address":"Biegener Straße 11","zip":"15299","ort":"Müllrose","stockkeeper":"PASHT /ANRIH","vans":["183","186","336","601"],"lat":52.25496176,"lon":14.41776948,"x":535.5,"y":280.5},{"plant":"20401040","name":"SC Pritzwalk","address":"Pritzwalker Straße 1","zip":"16928","ort":"Pritzwalk","stockkeeper":"LURAD","vans":[],"lat":53.1384965,"lon":12.153275,"x":401.1,"y":196.8},{"plant":"20401190","name":"SC Lüderitz","address":"Das Weizenland 2","zip":"39517","ort":"Lüderitz","stockkeeper":"DEPAC / SBTBE","vans":[],"lat":52.5131378,"lon":11.7431354,"x":376.7,"y":256},{"plant":"20401020","name":"SC Greifswald","address":"Herrenhufenstrasse 1a","zip":"17489","ort":"Greifswald","stockkeeper":"REBAR / JUMIT","vans":[],"lat":54.0723267,"lon":13.3799869,"x":473.9,"y":108.4},{"plant":"20406027","name":"Aussenlager Sarnow","address":"Anklamer Str 10","zip":"17392","ort":"Sarnow","stockkeeper":"REBAR / JUMIT","vans":[],"lat":53.75551414,"lon":13.62849361,"x":488.6,"y":138.4},{"plant":"20406113","name":"Lager Parchim","address":"Ludwigsluster Chaussee 5","zip":"19370","ort":"Parchim","stockkeeper":"SATNB/ DEKNO","vans":[],"lat":53.42465,"lon":11.81718,"x":381.1,"y":169.7},{"plant":"20406605","name":"Aussenlager Papendorf","address":"Dorftstr 40","zip":"18059","ort":"Papendorf","stockkeeper":"SATNB/ DEKNO","vans":[],"lat":54.03565649,"lon":12.13104001,"x":399.8,"y":111.9},{"plant":"20406654","name":"Aussenlager Grevesmühlen","address":"Degtower Weg 8","zip":"23936","ort":"Grevesmühlen","stockkeeper":"SATNB/ DEKNO","vans":[],"lat":53.85688572,"lon":11.20567327,"x":344.8,"y":128.8},{"plant":"-","name":"Tröbitz Office","address":"Doberluger Str. 25C, 03253 Tröbitz","zip":"3253","ort":"","stockkeeper":"CDE*","vans":[],"lat":51.6003329,"lon":13.4432762,"x":477.6,"y":342.5},{"plant":"20401130","name":"Schmerzke","address":"Am Piperfenn 10","zip":"14776","ort":"Brandenburg","stockkeeper":"GUIKA / MALKO","vans":[],"lat":52.3776853,"lon":12.5971474,"x":427.4,"y":268.9},{"plant":"20401100","name":"SC Schraden","address":"Am Damm 5","zip":"4928","ort":"Schraden","stockkeeper":"RERO, RPOHL(Dep)","vans":[],"lat":51.4328534,"lon":13.6937747,"x":492.5,"y":358.3},{"plant":"20401090","name":"SC Güsten","address":"Neue Anlage","zip":"39439","ort":"Güsten","stockkeeper":"MAHEH / NISUD","vans":[],"lat":51.80048,"lon":11.59692,"x":368.1,"y":323.5},{"plant":"20401030","name":"SC Kolkwitz","address":"Gewerbeparkstraße 8","zip":"3099","ort":"Kolkwitz","stockkeeper":"KAKAS, HOSEK(Dep.)","vans":[],"lat":51.7379563,"lon":14.2545565,"x":525.8,"y":329.5},{"plant":"20401080","name":"SC Tröbitz","address":"Doberluger Str. 25C","zip":"3253","ort":"Tröbitz","stockkeeper":"MASCD, MASPA(Dep)","vans":[],"lat":51.6003329,"lon":13.4432762,"x":477.6,"y":342.5},{"plant":"20406082","name":"Bad Langensalza","address":"Tonnaer Str. 27","zip":"99947","ort":"Bad Langensalza","stockkeeper":"NOSTU/ KIBUH","vans":[],"lat":51.1046809,"lon":10.66393044,"x":312.7,"y":389.4},{"plant":"20406046","name":"Sömmerda","address":"Ehrhardtstraße 10","zip":"99610","ort":"Sömmerda","stockkeeper":"FRILN/ RECLA","vans":[],"lat":51.170564,"lon":11.116111,"x":339.5,"y":383.2},{"plant":"","name":"Halle","address":"Delitscher Str. 82","zip":"6112","ort":"Halle","stockkeeper":"ASTER","vans":[],"lat":51.477427,"lon":12.012711,"x":392.7,"y":354.1},{"plant":"-","name":"Waldbüttelbrunn Office","address":"Friedrich-Koenig-Str. 11, 97297 Waldbüttelbrunn","zip":"97297","ort":"","stockkeeper":"NKOJE*","vans":[],"lat":49.79307,"lon":9.8471,"x":264.2,"y":513.6},{"plant":"20401150","name":"SC Roßtal","address":"Gewerbestraße 4","zip":"90574","ort":"Roßtal","stockkeeper":"OLSCI, ALEMU","vans":[],"lat":49.3910687,"lon":10.8959978,"x":326.5,"y":551.7},{"plant":"20401070","name":"SC Thalfang","address":"Bahnhofstraße 10A","zip":"54424","ort":"Thalfang","stockkeeper":"TIRAH, ANAWI","vans":[],"lat":49.7514163,"lon":7.0025288,"x":95.4,"y":517.6},{"plant":"20401050","name":"Waldbüttelbrunn","address":"Friedrich-Koenig-Str. 11","zip":"97297","ort":"Waldbüttelbrünn","stockkeeper":"STFSC, MSTAH","vans":[],"lat":49.79307,"lon":9.8471,"x":264.2,"y":513.6},{"plant":"20406047","name":"Kaufungen","address":"Schwarze Breite 4","zip":"34260","ort":"Kaufungen","stockkeeper":"CAWAR","vans":[],"lat":51.28391,"lon":9.57485,"x":248.1,"y":372.5},{"plant":"20401110","name":"Ilbesheim","address":"Flomborner Weg 17","zip":"67294","ort":"Ilbesheim","stockkeeper":"JEMIH, MMIEL","vans":[],"lat":49.6904885,"lon":8.079659,"x":159.3,"y":523.4},{"plant":"20406045","name":"Empfingen","address":"Julius-Bauser-Straße 24","zip":"72186","ort":"Empfingen","stockkeeper":"MRDRB","vans":["107 TOREC","140","257 MTDCR","507","520","704","936","937","858"],"lat":48.39694,"lon":8.71757,"x":197.2,"y":645.9},{"plant":"","name":"Erndtebrück","address":"Marburger Straße 1","zip":"57339","ort":"Erndtebrück","stockkeeper":"JATLI","vans":[],"lat":50.989672,"lon":8.25725,"x":169.9,"y":400.3},{"plant":"20401300","name":"SC Flieden","address":"Höllrain 26","zip":"36103","ort":"Flieden","stockkeeper":"TBKLT, MIHDL","vans":[],"lat":50.42104084,"lon":9.573422755,"x":248,"y":454.2}],"viewBox":"0 0 600 800"}</script>
+<script>
+let savedRaw = null;
+try { savedRaw = localStorage.getItem('stock-locations-data'); } catch (e) {}
+const DATA = savedRaw ? JSON.parse(savedRaw) : JSON.parse(document.getElementById('app-data').textContent);
+let locations = DATA.locations;
+let artifactApi = null;
+let canEdit = true;
+let editing = false;
+
+const markersG = document.getElementById('markers');
+const listEl = document.getElementById('list');
+const detailEl = document.getElementById('detail');
+const searchEl = document.getElementById('search');
+let activeIdx = null;
+
+function escapeHtml(s) {
+  return (s || '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function renderMarkers(filterIdxs) {
+  markersG.innerHTML = '';
+  locations.forEach((loc, i) => {
+    if (filterIdxs && !filterIdxs.has(i)) return;
+    const g = document.createElementNS('http://www.w3.org/2000/svg','g');
+    g.setAttribute('class','marker');
+    g.setAttribute('data-idx', i);
+    const c = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    c.setAttribute('cx', loc.x);
+    c.setAttribute('cy', loc.y);
+    c.setAttribute('r', loc.vans.length ? 5.5 : 4);
+    const hit = document.createElementNS('http://www.w3.org/2000/svg','circle');
+    hit.setAttribute('cx', loc.x);
+    hit.setAttribute('cy', loc.y);
+    hit.setAttribute('r', 12);
+    hit.setAttribute('fill', 'transparent');
+    g.appendChild(hit);
+    g.appendChild(c);
+    const t = document.createElementNS('http://www.w3.org/2000/svg','text');
+    t.setAttribute('x', loc.x + 7);
+    t.setAttribute('y', loc.y + 2.6);
+    t.textContent = loc.ort || loc.name;
+    g.appendChild(t);
+    g.addEventListener('click', () => selectLocation(i));
+    markersG.appendChild(g);
+  });
+}
+
+function renderList(filterIdxs) {
+  listEl.innerHTML = '';
+  locations.forEach((loc, i) => {
+    if (filterIdxs && !filterIdxs.has(i)) return;
+    const li = document.createElement('li');
+    li.dataset.idx = i;
+    li.innerHTML = `<div class="lname">${escapeHtml(loc.name)}</div><div class="lort">${escapeHtml(loc.ort || loc.zip)}${loc.vans.length ? ' &middot; ' + loc.vans.length + ' Van(s)' : ''}</div>`;
+    li.addEventListener('click', () => selectLocation(i));
+    listEl.appendChild(li);
+  });
+}
+
+function selectLocation(i) {
+  activeIdx = i;
+  editing = false;
+  renderDetail();
+  const li = listEl.querySelector(`li[data-idx="${activeIdx}"]`);
+  if (li) li.scrollIntoView({block: 'nearest'});
+}
+
+function renderDetail() {
+  const i = activeIdx;
+  const loc = locations[i];
+  document.querySelectorAll('.marker').forEach(m => m.classList.toggle('active', +m.dataset.idx === i));
+  document.querySelectorAll('#list li').forEach(l => l.classList.toggle('active', +l.dataset.idx === i));
+  detailEl.classList.add('show');
+
+  if (!editing) {
+    detailEl.innerHTML = `
+      <h2>${escapeHtml(loc.name)}</h2>
+      <div class="row"><div class="label">Adresse</div>${escapeHtml(loc.address)}${loc.zip ? ', ' + escapeHtml(loc.zip) : ''}${loc.ort ? ' ' + escapeHtml(loc.ort) : ''}</div>
+      ${loc.plant ? `<div class="row"><div class="label">Plant &amp; Sloc</div>${escapeHtml(loc.plant)}</div>` : ''}
+      <div class="row"><div class="label">Stockkeeper</div>${escapeHtml(loc.stockkeeper) || '&ndash;'}</div>
+      <div class="row"><div class="label">Vans (${loc.vans.length})</div>
+        <div class="vans">${loc.vans.length ? loc.vans.map(v => `<span class="van">${escapeHtml(v)}</span>`).join('') : '<span style="color:var(--muted)">keine hinterlegt</span>'}</div>
+      </div>
+      ${canEdit ? `<button id="edit-btn" class="edit-btn">Bearbeiten</button>` : ''}
+    `;
+    const editBtn = document.getElementById('edit-btn');
+    if (editBtn) editBtn.addEventListener('click', () => { editing = true; renderDetail(); });
+  } else {
+    detailEl.innerHTML = `
+      <div class="row"><div class="label">Name</div><input id="f-name" value="${escapeHtml(loc.name)}"></div>
+      <div class="row"><div class="label">Adresse</div><input id="f-address" value="${escapeHtml(loc.address)}"></div>
+      <div class="row" style="display:flex; gap:8px;">
+        <div style="flex:1"><div class="label">PLZ</div><input id="f-zip" value="${escapeHtml(loc.zip)}"></div>
+        <div style="flex:1"><div class="label">Ort</div><input id="f-ort" value="${escapeHtml(loc.ort)}"></div>
+      </div>
+      <div class="row"><div class="label">Plant &amp; Sloc</div><input id="f-plant" value="${escapeHtml(loc.plant)}"></div>
+      <div class="row"><div class="label">Stockkeeper</div><input id="f-stock" value="${escapeHtml(loc.stockkeeper)}"></div>
+      <div class="row"><div class="label">Vans (eine pro Zeile)</div><textarea id="f-vans" rows="4">${escapeHtml(loc.vans.join('\n'))}</textarea></div>
+      <div class="row" style="display:flex; gap:8px; margin-top:12px;">
+        <button id="save-btn" class="edit-btn">Speichern</button>
+        <button id="cancel-btn" class="edit-btn secondary">Abbrechen</button>
+      </div>
+      <div id="save-status" style="font-size:0.78rem; color:var(--muted); margin-top:6px;"></div>
+    `;
+    document.getElementById('cancel-btn').addEventListener('click', () => { editing = false; renderDetail(); });
+    document.getElementById('save-btn').addEventListener('click', () => saveLocation(i));
+  }
+}
+
+async function saveLocation(i) {
+  const loc = locations[i];
+  loc.name = document.getElementById('f-name').value.trim();
+  loc.address = document.getElementById('f-address').value.trim();
+  loc.zip = document.getElementById('f-zip').value.trim();
+  loc.ort = document.getElementById('f-ort').value.trim();
+  loc.plant = document.getElementById('f-plant').value.trim();
+  loc.stockkeeper = document.getElementById('f-stock').value.trim();
+  loc.vans = document.getElementById('f-vans').value.split('\n').map(v => v.trim()).filter(Boolean);
+
+  const statusEl = document.getElementById('save-status');
+  if (statusEl) statusEl.textContent = 'Gespeichert.';
+
+  document.getElementById('app-data').textContent = JSON.stringify(DATA);
+  try { localStorage.setItem('stock-locations-data', JSON.stringify(DATA)); } catch (e) {}
+  renderMarkers(null);
+  renderList(null);
+  editing = false;
+  renderDetail();
+
+  if (artifactApi) {
+    try {
+      const html = '<!DOCTYPE html>\n' + document.documentElement.outerHTML;
+      await artifactApi.publish(html);
+    } catch (e) {
+      console.error('publish failed', e);
+    }
+  }
+}
+
+searchEl.addEventListener('input', () => {
+  const q = searchEl.value.trim().toLowerCase();
+  if (!q) { renderMarkers(null); renderList(null); return; }
+  const idxs = new Set();
+  locations.forEach((loc, i) => {
+    const hay = [loc.name, loc.address, loc.ort, loc.zip, loc.stockkeeper, loc.vans.join(' ')].join(' ').toLowerCase();
+    if (hay.includes(q)) idxs.add(i);
+  });
+  renderMarkers(idxs);
+  renderList(idxs);
+});
+
+renderMarkers(null);
+renderList(null);
+
+(async () => {
+  try {
+    artifactApi = await claude.use('artifact');
+  } catch (e) {
+    artifactApi = null;
+  }
+})();
+
+// pan & zoom
+const svg = document.getElementById('map-svg');
+const panGroup = document.getElementById('pan-group');
+let vb = DATA.viewBox.split(' ').map(Number);
+let baseVb = vb.slice();
+function applyVB() { svg.setAttribute('viewBox', vb.join(' ')); }
+function zoom(factor, cx, cy) {
+  const [x,y,w,h] = vb;
+  const px = cx === undefined ? x + w/2 : cx;
+  const py = cy === undefined ? y + h/2 : cy;
+  const nw = Math.max(80, Math.min(baseVb[2]*3, w * factor));
+  const nh = Math.max(80, Math.min(baseVb[3]*3, h * factor));
+  const nx = px - (px - x) * (nw/w);
+  const ny = py - (py - y) * (nh/h);
+  vb = [nx, ny, nw, nh];
+  applyVB();
+}
+document.getElementById('zoom-in').addEventListener('click', () => zoom(0.8));
+document.getElementById('zoom-out').addEventListener('click', () => zoom(1.25));
+document.getElementById('zoom-reset').addEventListener('click', () => { vb = baseVb.slice(); applyVB(); });
+
+let dragging = false, lastX, lastY;
+function toSvgPoint(clientX, clientY) {
+  const rect = svg.getBoundingClientRect();
+  const [x,y,w,h] = vb;
+  return { x: x + (clientX - rect.left)/rect.width * w, y: y + (clientY - rect.top)/rect.height * h };
+}
+svg.addEventListener('pointerdown', e => {
+  if (e.target.closest && e.target.closest('.marker')) return;
+  dragging = true; lastX = e.clientX; lastY = e.clientY; svg.classList.add('grabbing'); svg.setPointerCapture(e.pointerId);
+});
+svg.addEventListener('pointermove', e => {
+  if (!dragging) return;
+  const rect = svg.getBoundingClientRect();
+  const [x,y,w,h] = vb;
+  const dx = (e.clientX - lastX) / rect.width * w;
+  const dy = (e.clientY - lastY) / rect.height * h;
+  vb = [x - dx, y - dy, w, h];
+  applyVB();
+  lastX = e.clientX; lastY = e.clientY;
+});
+window.addEventListener('pointerup', () => { dragging = false; svg.classList.remove('grabbing'); });
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const pt = toSvgPoint(e.clientX, e.clientY);
+  zoom(e.deltaY > 0 ? 1.12 : 0.9, pt.x, pt.y);
+}, { passive: false });
+</script>
+
+
+</body></html>
